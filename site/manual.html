@@ -340,7 +340,7 @@ kbd{font-family:var(--f-mono);font-size:.8em;border:1px solid var(--line);border
     <li>ตาราง <code>Stock_Item</code> → คลาส <code>StockItem</code> · คอลัมน์ <code>Member_PhoneNo</code> → field <code>memberPhoneNo</code></li>
     <li>คอมโพเนนต์ = คำนำหน้าชนิด + ชื่อ field เช่น <code>txtMemberName</code></li>
   </ul></div>
-  <nav class="minitoc"><a href="#tree">โครงไฟล์</a><a href="#layers">4 ชั้น</a><a href="#n-class">ชื่อคลาส</a><a href="#n-field">ชื่อ field</a><a href="#n-swing">ชื่อคอมโพเนนต์</a><a href="#n-other">ชื่ออื่น ๆ</a></nav>
+  <nav class="minitoc"><a href="#tree">โครงไฟล์</a><a href="#who">ใครสร้างอะไร</a><a href="#layers">4 ชั้น</a><a href="#n-class">ชื่อคลาส</a><a href="#n-field">ชื่อ field</a><a href="#n-swing">ชื่อคอมโพเนนต์</a><a href="#n-other">ชื่ออื่น ๆ</a></nav>
 
   <section class="block" id="tree">
     <h3>โครงไฟล์</h3>
@@ -393,6 +393,85 @@ kbd{font-family:var(--f-mono);font-size:.8em;border:1px solid var(--line);border
         &lt;version&gt;1.5.5&lt;/version&gt;
     &lt;/dependency&gt;
 &lt;/dependencies&gt;</code></pre></details>
+  </section>
+
+  <section class="block" id="who">
+    <h3>ใครสร้างไฟล์ไหน ไว้โฟลเดอร์ไหน</h3>
+    <p>ทุกคน <b>ไม่ต้องสร้างโปรเจกต์เอง</b> เต้ push โครงโฟลเดอร์ขึ้น Git วันที่ 7 พ.ย. แล้วทุกคน pull ไปทำต่อ ตารางนี้บอกว่าไฟล์ของแต่ละคนต้องเพิ่ม (New → Java Class) ในโฟลเดอร์ไหน พาธเริ่มจาก <code>src/main/java/com/example/bonussuki/</code> ยกเว้นที่ระบุว่าเป็นพาธอื่น</p>
+    <nav class="minitoc"><a href="#who-0">โอ๊ต</a><a href="#who-1">เปรม</a><a href="#who-2">นุ</a><a href="#who-3">บิ๊ก</a><a href="#who-4">บาส</a><a href="#who-5">เต้</a><a href="#who-6">นิว</a><a href="#who-7">ต๊ะ</a><a href="#who-none">ยังไม่มีเจ้าของ</a></nav>
+    <h4 id="who-0">โอ๊ต · 11 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>DiningTable.java</code> · <code>Promotion.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>DiningTableDao.java</code> · <code>PromotionDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>PosService.java</code> · <code>PromotionService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>OpenTableDialog.java</code> · <code>PaymentDialog.java</code> · <code>PosPanel.java</code></td></tr>
+      <tr><td><code>ui/component/</code></td><td><code>ProductItemPanel.java</code> · <code>OrderLinePanel.java</code></td></tr>
+      <tr><td><code>images/products/</code> <span class="muted">(นอก src)</span></td><td>รูปเมนู ตั้งชื่อตามรหัสสินค้า เช่น PD001.jpg (เต้ใส่ mock data, โอ๊ตใช้โหลดในหน้า POS)</td></tr>
+    </tbody></table></div>
+    <h4 id="who-1">เปรม · 10 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td>(โฟลเดอร์ bonussuki)</td><td><code>BonusSuki.java</code></td></tr>
+      <tr><td><code>helper/</code></td><td><code>Session.java</code></td></tr>
+      <tr><td><code>model/</code></td><td><code>Expense.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>ExpenseDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>ExpenseService.java</code> · <code>LoginService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>ExpensePanel.java</code> · <code>LoginFrame.java</code> · <code>MainFrame.java</code> · <code>HomePanel.java</code></td></tr>
+      <tr><td><code>images/receipts/2026-11/</code> <span class="muted">(นอก src)</span></td><td>รูปใบเสร็จค่าใช้จ่าย (ใช้ในหน้า Expense)</td></tr>
+      <tr><td><code>images/logo.png</code> <span class="muted">(นอก src)</span></td><td>โลโก้ร้านที่หน้า Login ใช้</td></tr>
+    </tbody></table></div>
+    <h4 id="who-2">นุ · 8 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>Bill.java</code> · <code>BillProduct.java</code> · <code>BillLine.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>BillDao.java</code> · <code>BillProductDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>BillService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>BillPanel.java</code> · <code>BillDetailDialog.java</code></td></tr>
+    </tbody></table></div>
+    <h4 id="who-3">บิ๊ก · 8 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>WorkTime.java</code> · <code>ReportRow.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>WorkTimeDao.java</code> · <code>ReportDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>WorkTimeService.java</code> · <code>ReportService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>WorkTimePanel.java</code> · <code>DashboardPanel.java</code></td></tr>
+    </tbody></table></div>
+    <h4 id="who-4">บาส · 12 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>Product.java</code> · <code>StockItem.java</code> · <code>CheckStock.java</code> · <code>CheckStockDetail.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>ProductDao.java</code> · <code>StockItemDao.java</code> · <code>CheckStockDao.java</code> · <code>CheckStockDetailDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>ProductService.java</code> · <code>StockItemService.java</code> · <code>CheckStockService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>ProductPanel.java</code></td></tr>
+    </tbody></table></div>
+    <h4 id="who-5">เต้ · 9 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>helper/</code></td><td><code>DatabaseHelper.java</code> · <code>DateUtil.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>Dao.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>StockItemPanel.java</code> · <code>CheckStockPanel.java</code></td></tr>
+      <tr><td><code>ui/component/</code></td><td><code>Theme.java</code> · <code>ThaiFont.java</code></td></tr>
+      <tr><td><code>sql/</code></td><td><code>bonus_suki_sqlite.sql</code></td></tr>
+      <tr><td>(รากโปรเจกต์)</td><td><code>bonus_suki.db</code></td></tr>
+      <tr><td><code>images/</code> <span class="muted">(นอก src)</span></td><td>สร้างโฟลเดอร์ + logo.png</td></tr>
+      <tr><td><code>sql/</code> <span class="muted">(นอก src)</span></td><td>เก็บสคริปต์ฐานข้อมูล</td></tr>
+      <tr><td><code>pom.xml</code> <span class="muted">(นอก src)</span></td><td>ใส่ dependency 2 ตัว</td></tr>
+    </tbody></table></div>
+    <h4 id="who-6">นิว · 11 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>Vendor.java</code> · <code>Employee.java</code> · <code>UserAccount.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>VendorDao.java</code> · <code>EmployeeDao.java</code> · <code>UserAccountDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>VendorService.java</code> · <code>EmployeeService.java</code> · <code>UserAccountService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>VendorPanel.java</code> · <code>EmployeePanel.java</code></td></tr>
+    </tbody></table></div>
+    <h4 id="who-7">ต๊ะ · 8 ไฟล์</h4>
+    <div class="scroll"><table><thead><tr><th>โฟลเดอร์</th><th>ไฟล์ที่สร้างในโฟลเดอร์นี้</th></tr></thead><tbody>
+      <tr><td><code>model/</code></td><td><code>Member.java</code> · <code>Payroll.java</code></td></tr>
+      <tr><td><code>dao/</code></td><td><code>MemberDao.java</code> · <code>PayrollDao.java</code></td></tr>
+      <tr><td><code>service/</code></td><td><code>MemberService.java</code> · <code>PayrollService.java</code></td></tr>
+      <tr><td><code>ui/</code></td><td><code>MemberPanel.java</code> · <code>PayrollPanel.java</code></td></tr>
+    </tbody></table></div>
+    <h4 id="who-none">ยังไม่มีเจ้าของ (ข้อ 13)</h4>
+    <div class="scroll"><table><thead><tr><th>ไฟล์</th><th>โฟลเดอร์</th><th>งาน</th></tr></thead><tbody>
+      <tr><td>Bom, BomDao</td><td>model + dao (<code>model/</code> กับ <code>dao/</code>)</td><td>สูตร BOM · ทีมต้องแบ่งงานก่อน</td></tr>
+      <tr><td>StockImport, StockImportDao, LotDetail, LotDetailDao</td><td>model + dao (<code>model/</code> กับ <code>dao/</code>)</td><td>รับของเข้า (Import + Lot_Detail) · ทีมต้องแบ่งงานก่อน</td></tr>
+    </tbody></table></div>
+    <p class="muted">เจ้าของไฟล์ = เจ้าของงานตัวแรกของไฟล์นั้นในแผนผังโปรเจกต์ · <code>BillDetailDialog</code> ชีทมี 2 งานซ้ำ (1-8 ของนุ กับ 18 ของเต้) ใส่ไว้ที่นุ ตามข้อ 12 · ถ้าต้องแก้ไฟล์ของคนอื่น บอกเจ้าของก่อน</p>
   </section>
 
   <section class="block" id="layers">
