@@ -31,6 +31,10 @@
 ## เว็บบน Cloudflare Pages
 
 โฟลเดอร์ `site/` คือเว็บที่ deploy ขึ้น Cloudflare Pages (`index.html` = หน้าโปรเจกต์, `manual.html` = คู่มือ)
-ตั้งค่าใน Cloudflare: Build command เว้นว่าง · Build output directory `site` · push ขึ้น `main` เมื่อไหร่ เว็บอัปเดตเอง
+โปรเจกต์ `bonus-suki` บน Cloudflare เป็นแบบอัปโหลดตรง (ไม่ได้ผูก Git) การ push ขึ้น `main` ไม่ทำให้เว็บอัปเดต ต้อง deploy เอง:
+
+```
+npx wrangler pages deploy site --project-name bonus-suki --branch main
+```
 
 เว็บบน Cloudflare เป็นเวอร์ชันอ่านอย่างเดียว ภาพรวมทีม การติ๊ก checkpoint และการบันทึก % ลงชีท ใช้ได้ในหน้าโปรเจกต์บน Claude เท่านั้น
