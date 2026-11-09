@@ -1033,7 +1033,7 @@ INSERT OR IGNORE INTO User_Account (User_ID, Username, Password, Role, Emp_ID) V
   <section class="m-block" id="m-db-helper">
     <h3>DatabaseHelper + DateUtil</h3>
     <p>ต่างจากแลป 3 จุด: ไฟล์ชื่อ <code>bonus_suki.db</code> · ใช้ <code>nextId()</code> แทน <code>getInsertedId()</code> · มีตัวอ่านคอลัมน์ที่ NULL ได้</p>
-    <details class="m-codebox"><summary><span class="m-file">helper/DatabaseHelper.java</span><span class="m-lines">84 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.helper;
+    <details class="m-codebox"><summary><span class="m-file">helper/DatabaseHelper.java</span><span class="m-lines">114 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.helper;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -1061,8 +1061,12 @@ public class DatabaseHelper {
         if (conn == null) {
             try {
                 conn = DriverManager.getConnection(URL);
-                try (Statement pragma = conn.createStatement()) {
+                Statement pragma = null;
+                try {
+                    pragma = conn.createStatement();
                     pragma.execute(&quot;PRAGMA foreign_keys = ON&quot;);   // SQLite ปิด FK ไว้เป็นค่าเริ่มต้น
+                } finally {
+                    closeQuietly(null, pragma);
                 }
             } catch (SQLException ex) {
                 LOG.log(Level.SEVERE, &quot;เชื่อมต่อฐานข้อมูลไม่สำเร็จ: &quot; + URL, ex);
@@ -1092,17 +1096,43 @@ public class DatabaseHelper {
                 + &quot; WHERE &quot; + idColumn + &quot; LIKE ?&quot;
                 + &quot; ORDER BY LENGTH(&quot; + idColumn + &quot;) DESC, &quot; + idColumn + &quot; DESC LIMIT 1&quot;;
         int next = 1;
-        try (PreparedStatement stmt = getConnect().prepareStatement(sql)) {
+        Connection conn = getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, prefix + &quot;%&quot;);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    next = Integer.parseInt(rs.getString(1).substring(prefix.length())) + 1;
-                }
+            rs = stmt.executeQuery();
+            if (rs.next()) {
+                next = Integer.parseInt(rs.getString(1).substring(prefix.length())) + 1;
             }
         } catch (SQLException | NumberFormatException ex) {
             LOG.log(Level.WARNING, &quot;nextId(&quot; + table + &quot;) ล้มเหลว&quot;, ex);
+        } finally {
+            closeQuietly(rs, stmt);
         }
         return prefix + String.format(&quot;%0&quot; + digits + &quot;d&quot;, next);
+    }
+
+    /**
+     * ปิด ResultSet และ Statement ที่เมธอดเปิดเอง (เรียกใน finally ของ DAO แบบ Lab 8)
+     * ไม่ปิด Connection เพราะใช้ร่วมกันทั้งแอป · ปิดพลาดตัวหนึ่งยังพยายามปิดอีกตัว
+     */
+    public static void closeQuietly(ResultSet rs, Statement stmt) {
+        if (rs != null) {
+            try {
+                rs.close();
+            } catch (SQLException closeEx) {
+                System.err.println(&quot;Close rs failed: &quot; + closeEx.getMessage());
+            }
+        }
+        if (stmt != null) {
+            try {
+                stmt.close();
+            } catch (SQLException closeEx) {
+                System.err.println(&quot;Close stmt failed: &quot; + closeEx.getMessage());
+            }
+        }
     }
 
     /** คอลัมน์ INT ที่ NULL ได้ (เช่น Promo_Amount_Member) → Integer หรือ null */
@@ -1424,7 +1454,7 @@ public class Member {
         return memberName + &quot; (&quot; + memberPhoneNo + &quot;)&quot;;
     }
 }</code></pre></details></section>
-  <section class="m-block" id="m-c-memberdao"><h3>DAO</h3><details class="m-codebox"><summary><span class="m-file">dao/MemberDao.java</span><span class="m-lines">113 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.dao;
+  <section class="m-block" id="m-c-memberdao"><h3>DAO</h3><details class="m-codebox"><summary><span class="m-file">dao/MemberDao.java</span><span class="m-lines">144 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.dao;
 
 import com.example.bonussuki.helper.DatabaseHelper;
 import com.example.bonussuki.model.Member;
@@ -1441,28 +1471,38 @@ public class MemberDao implements Dao&lt;Member&gt; {
     @Override
     public Member get(String id) {
         String sql = &quot;SELECT * FROM Member WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, id);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? Member.fromRS(rs) : null;
-            }
+            rs = stmt.executeQuery();
+            return rs.next() ? Member.fromRS(rs) : null;
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;get(&quot; + id + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
     }
 
     /** เมธอดพิเศษ: ค้นสมาชิกด้วยเบอร์โทร (TOR: ค้นหาข้อมูลด้วยเบอร์โทรศัพท์) */
     public Member getByPhoneNo(String phoneNo) {
         String sql = &quot;SELECT * FROM Member WHERE Member_PhoneNo = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, phoneNo);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? Member.fromRS(rs) : null;
-            }
+            rs = stmt.executeQuery();
+            return rs.next() ? Member.fromRS(rs) : null;
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;getByPhoneNo ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
     }
 
@@ -1475,13 +1515,19 @@ public class MemberDao implements Dao&lt;Member&gt; {
     public List&lt;Member&gt; getAll(String where, String order) {
         List&lt;Member&gt; list = new ArrayList&lt;&gt;();
         String sql = &quot;SELECT * FROM Member WHERE &quot; + where + &quot; ORDER BY &quot; + order;
-        try (Statement stmt = DatabaseHelper.getConnect().createStatement();
-                ResultSet rs = stmt.executeQuery(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        Statement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.createStatement();
+            rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 list.add(Member.fromRS(rs));
             }
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;getAll ล้มเหลว: &quot; + sql, ex);
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
         return list;
     }
@@ -1493,7 +1539,10 @@ public class MemberDao implements Dao&lt;Member&gt; {
         }
         String sql = &quot;INSERT INTO Member (Member_ID, Member_Name, Member_PhoneNo, Member_Address, Point_Balance) &quot;
                 + &quot;VALUES (?, ?, ?, ?, ?)&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberId());
             stmt.setString(2, obj.getMemberName());
             stmt.setString(3, obj.getMemberPhoneNo());
@@ -1504,6 +1553,8 @@ public class MemberDao implements Dao&lt;Member&gt; {
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;save(&quot; + obj.getMemberPhoneNo() + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 
@@ -1511,7 +1562,10 @@ public class MemberDao implements Dao&lt;Member&gt; {
     public Member update(Member obj) {
         String sql = &quot;UPDATE Member SET Member_Name = ?, Member_PhoneNo = ?, Member_Address = ?, Point_Balance = ? &quot;
                 + &quot;WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberName());
             stmt.setString(2, obj.getMemberPhoneNo());
             stmt.setString(3, obj.getMemberAddress());
@@ -1521,19 +1575,26 @@ public class MemberDao implements Dao&lt;Member&gt; {
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;update(&quot; + obj.getMemberId() + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 
     @Override
     public int delete(Member obj) {
         String sql = &quot;DELETE FROM Member WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberId());
             return stmt.executeUpdate();
         } catch (SQLException ex) {
             // มีบิลอ้างถึงสมาชิกนี้อยู่ → FK ไม่ให้ลบ
             LOG.log(Level.WARNING, &quot;delete(&quot; + obj.getMemberId() + &quot;) ล้มเหลว&quot;, ex);
             return -1;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 }</code></pre></details></section>
@@ -1651,36 +1712,39 @@ public class TestMemberDao {
   <section class="m-block" id="m-c-panel">
     <h3>หน้าจอ CRUD (แม่แบบของทุกหน้า)</h3>
     <p>วางคอมโพเนนต์ในแท็บ Design แล้วเขียนเฉพาะส่วนนี้ในแท็บ Source</p>
-    <details class="m-codebox"><summary><span class="m-file">ui/MemberPanel.java (ส่วนที่เขียนเอง)</span><span class="m-lines">94 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>// ui/MemberPanel.java · หน้า CRUD แม่แบบ ใช้ซ้ำได้กับทุกตาราง (เปลี่ยน Member เป็นชื่อตารางของตัวเอง)
+    <details class="m-codebox"><summary><span class="m-file">ui/MemberPanel.java (ส่วนที่เขียนเอง)</span><span class="m-lines">99 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>// ui/MemberPanel.java · หน้า CRUD แม่แบบ ใช้ซ้ำได้กับทุกตาราง (เปลี่ยน Member เป็นชื่อตารางของตัวเอง)
 // หน้า Design: pnlForm (ซ้าย) txtMemberId · txtMemberName · txtMemberPhoneNo · txaMemberAddress · txtPointBalance
 //              btnNew · btnSave · btnDelete       (ขวา) txtSearch · btnSearch · scrMember ห่อ tblMember
 private final MemberService memberService = new MemberService();
-private final DefaultTableModel tableModel = new DefaultTableModel(
-        new Object[]{&quot;รหัส&quot;, &quot;ชื่อ-นามสกุล&quot;, &quot;เบอร์โทร&quot;, &quot;คะแนนสะสม&quot;}, 0) {
-    @Override
-    public boolean isCellEditable(int row, int column) {
-        return false;
-    }
-};
 
 public MemberPanel() {
     initComponents();
-    tblMember.setModel(tableModel);
-    tblMember.getSelectionModel().addListSelectionListener(e -&gt; {
-        if (!e.getValueIsAdjusting()) {
-            fillForm();
-        }
-    });
+    // JTable ไม่มีเมนู Events → ListSelection ใน designer ต้องผูกเองตรงนี้ (แบบ Lab 11)
+    tblMember.getSelectionModel().addListSelectionListener(this::tblMemberValueChanged);
     txtMemberId.setEditable(false);          // รหัสสร้างอัตโนมัติ
     txtPointBalance.setEditable(false);      // คะแนนเพิ่มจากการปิดบิลเท่านั้น
     Theme.stylePrimaryButton(btnSave);
     loadTable(memberService.getAll());
 }
 
+/** สร้าง model ใหม่ทุกครั้งจากข้อมูลสด แล้ว setModel (แบบ Lab 11) */
 private void loadTable(List&lt;Member&gt; list) {
-    tableModel.setRowCount(0);
+    DefaultTableModel model = new DefaultTableModel(
+            new Object[]{&quot;รหัส&quot;, &quot;ชื่อ-นามสกุล&quot;, &quot;เบอร์โทร&quot;, &quot;คะแนนสะสม&quot;}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;                    // แก้ผ่านฟอร์มเท่านั้น
+        }
+    };
     for (Member m : list) {
-        tableModel.addRow(new Object[]{m.getMemberId(), m.getMemberName(), m.getMemberPhoneNo(), m.getPointBalance()});
+        model.addRow(new Object[]{m.getMemberId(), m.getMemberName(), m.getMemberPhoneNo(), m.getPointBalance()});
+    }
+    tblMember.setModel(model);
+}
+
+private void tblMemberValueChanged(javax.swing.event.ListSelectionEvent evt) {
+    if (!evt.getValueIsAdjusting()) {
+        fillForm();
     }
 }
 
@@ -1689,7 +1753,7 @@ private void fillForm() {
     if (row &lt; 0) {
         return;
     }
-    Member m = memberService.get((String) tableModel.getValueAt(row, 0));
+    Member m = memberService.get((String) tblMember.getModel().getValueAt(tblMember.convertRowIndexToModel(row), 0));
     txtMemberId.setText(m.getMemberId());
     txtMemberName.setText(m.getMemberName());
     txtMemberPhoneNo.setText(m.getMemberPhoneNo());
@@ -1706,6 +1770,8 @@ private void clearForm() {
     txtPointBalance.setText(&quot;0&quot;);
 }
 
+// ปุ่มทุกปุ่ม: ดับเบิลคลิกในแท็บ Design (หรือคลิกขวา → Events → Action → actionPerformed)
+// NetBeans สร้างหัวเมธอดให้ เราเขียนแค่ข้างใน
 private void btnNewActionPerformed(java.awt.event.ActionEvent evt) {
     clearForm();
     txtMemberName.requestFocus();
@@ -2013,51 +2079,41 @@ private void btnLogoutActionPerformed(java.awt.event.ActionEvent evt) {
       <div class="m-tile"><div class="m-k">OpenTableDialog</div><p><code>cmbDiningTable</code> (โต๊ะว่าง) · <code>spnAmountMember</code> · <code>btnOpen</code> · <code>btnCancel</code></p></div>
       <div class="m-tile"><div class="m-k">PaymentDialog</div><p><code>lblTotal</code> · <code>txtMemberPhoneNo</code> + <code>btnFindMember</code> · <code>cmbPromotion</code> · <code>lblDiscount</code> · <code>lblNetAmount</code> · <code>cmbPaymentType</code> · <code>txtReceivedAmount</code> · <code>lblChange</code> · <code>btnConfirm</code></p></div>
     </div>
-    <details class="m-codebox"><summary><span class="m-file">ui/component/ProductItemPanel.java</span><span class="m-lines">57 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.ui.component;
+    <details class="m-codebox"><summary><span class="m-file">ui/component/ProductItemPanel.java</span><span class="m-lines">47 บรรทัด · กดเพื่อเปิด</span></summary><div class="m-bar"><button class="m-copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.ui.component;
 
 import com.example.bonussuki.model.Product;
-import java.awt.BorderLayout;
-import java.awt.GridLayout;
 import java.awt.Image;
 import java.io.File;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
 
-/** การ์ดเมนู 1 ใบในหน้า POS (รูป · ชื่อ · ราคา · ปุ่ม +) สร้างด้วยโค้ด เพราะจำนวนการ์ดมาจากฐานข้อมูล */
-public class ProductItemPanel extends JPanel {
+/**
+ * การ์ดเมนู 1 ใบในหน้า POS · New → JPanel Form ชื่อ ProductItemPanel ใน package ui.component
+ * หน้า Design: lblImage (บน) · lblName + lblPrice (ล่างซ้าย) · btnAdd &quot;+&quot; (ล่างขวา)
+ * จำนวนการ์ดมาจากฐานข้อมูล PosPanel จึง new ProductItemPanel(...) ทีละใบตอนโหลดเมนู
+ */
+public class ProductItemPanel extends javax.swing.JPanel {
 
-    private final JLabel lblImage = new JLabel();
-    private final JLabel lblName = new JLabel();
-    private final JLabel lblPrice = new JLabel();
-    private final JButton btnAdd = new JButton(&quot;+&quot;);
+    private final Product product;
+    private final Consumer&lt;Product&gt; onAdd;
 
     public ProductItemPanel(Product product, Consumer&lt;Product&gt; onAdd) {
-        setLayout(new BorderLayout());
+        this.product = product;
+        this.onAdd = onAdd;
+        initComponents();
         setBackground(Theme.SURFACE);
         setBorder(BorderFactory.createLineBorder(Theme.BORDER));
-
         lblImage.setIcon(loadImage(&quot;images/products/&quot; + product.getProductId() + &quot;.jpg&quot;, 170, 130));
         lblName.setText(product.getProductName());
         lblPrice.setText(String.format(&quot;%,.0f บาท&quot;, product.getAmount()));
-        btnAdd.addActionListener(e -&gt; onAdd.accept(product));
+        Theme.stylePrimaryButton(btnAdd);
+    }
 
-        JPanel pnlText = new JPanel(new GridLayout(2, 1));
-        pnlText.setOpaque(false);
-        pnlText.add(lblName);
-        pnlText.add(lblPrice);
+    // initComponents() ... (NetBeans สร้างจากแท็บ Design)
 
-        JPanel pnlInfo = new JPanel(new BorderLayout());
-        pnlInfo.setOpaque(false);
-        pnlInfo.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        pnlInfo.add(pnlText, BorderLayout.CENTER);
-        pnlInfo.add(btnAdd, BorderLayout.EAST);
-
-        add(lblImage, BorderLayout.CENTER);
-        add(pnlInfo, BorderLayout.SOUTH);
+    private void btnAddActionPerformed(java.awt.event.ActionEvent evt) {
+        onAdd.accept(product);
     }
 
     /** ไม่มีรูปของเมนูนั้น → ใช้ images/no-image.png */
@@ -2079,8 +2135,8 @@ private String currentType = null;        // หมวดที่เลือ�
 
 public PosPanel() {
     initComponents();
-    pnlProductGrid.setLayout(new GridLayout(0, 3, 16, 16));      // 3 คอลัมน์ตาม Figma
-    pnlOrderList.setLayout(new BoxLayout(pnlOrderList, BoxLayout.Y_AXIS));
+    // Layout ตั้งในแท็บ Design: pnlProductGrid = Grid Layout (Rows 0, Columns 3, Gap 16) ตาม Figma
+    //                          pnlOrderList = Box Layout (Axis: Y Axis)
     Theme.stylePrimaryButton(btnCheckout);
     buildCategoryButtons();
     loadProducts();
@@ -2521,8 +2577,8 @@ const T = {
       S('read', 'อ่านตารางของโมดูลก่อน', `เปิดแท็บคู่มือโปรเจกต์ พาร์ท 4 → "ชื่อตัวแปรทุกตาราง" แล้วกางตาราง ${e.table} ดูชื่อคอลัมน์ ชนิด และคอลัมน์ที่ NULL ได้`, 'ชื่อ field, getter และชื่อคอลัมน์ใน SQL ต้องตรงกันทุกตัว ถ้าตั้งเองจะชนกับคนที่เรียกใช้คลาสนี้', `รู้ว่า PK คือ ${e.pk} และคอลัมน์ไหน NULL ได้`),
       S('model', `สร้าง model ${e.cls}`, `ใน package model: field ตามคอลัมน์ (${e.fields}) · constructor 3 แบบ (เต็ม / ไม่มี id / ว่าง) · getter/setter (Ctrl+I) · static fromRS(ResultSet) · toString() ที่คืนชื่อสำหรับ JComboBox`, 'model เป็นกล่องส่งข้อมูล 1 แถวระหว่าง DAO → service → หน้าจอ ถ้าไม่มี fromRS ทุกเมธอดใน DAO ต้องอ่าน ResultSet ซ้ำเอง', 'กด Build (F11) ผ่าน ไม่มีตัวแดง', `public static ${c} fromRS(ResultSet rs) throws SQLException {\n    ${c} x = new ${c}();\n    // x.setXxx(rs.getString("Column_Name")); ... ครบทุกคอลัมน์\n    return x;\n}`),
       e.composite
-        ? S('dao', `สร้าง ${c}Dao (PK หลายคอลัมน์)`, `ใน package dao: ไม่ต้อง implements Dao<T> เพราะ PK มี 2 คอลัมน์ ให้เขียน get / save / update / delete เองโดยรับ PK ครบทุกตัว · ใช้ PreparedStatement ทุกเมธอด`, 'interface Dao รับ id เดียว ใช้กับ PK คู่ไม่ได้ ถ้าฝืนจะได้แถวผิด', 'มีครบ 4 เมธอดและ compile ผ่าน', `public ${c} get(String a, String b)  // WHERE Col_A = ? AND Col_B = ?`)
-        : S('dao', `สร้าง ${c}Dao implements Dao<${c}>`, `ใน package dao: get, getAll, getAll(where, order), save, update, delete ตามแม่แบบ MemberDao · save() สร้างรหัสใหม่ด้วย nextId ถ้า id ยังว่าง`, 'SQL ทั้งหมดของตารางนี้อยู่ไฟล์เดียว หน้าจอและ service ไม่ต้องรู้ชื่อคอลัมน์', 'มีครบ 6 เมธอดและ compile ผ่าน', `obj.set${e.pk.split(' / ')[0].split('_').map((p) => p === 'ID' ? 'Id' : p[0] + p.slice(1).toLowerCase()).join('')}(DatabaseHelper.nextId("${e.table.split(' ')[0]}", "${e.pk.split(' / ')[0]}", "${e.prefix.split(' / ')[0]}", ${e.digits}));`),
+        ? S('dao', `สร้าง ${c}Dao (PK หลายคอลัมน์)`, `ใน package dao: ไม่ต้อง implements Dao<T> เพราะ PK มี 2 คอลัมน์ ให้เขียน get / save / update / delete เองโดยรับ PK ครบทุกตัว · ใช้ PreparedStatement ทุกเมธอด · try-catch-finally แบบ Lab 8 ปิด rs/stmt ใน finally ด้วย DatabaseHelper.closeQuietly(rs, stmt)`, 'interface Dao รับ id เดียว ใช้กับ PK คู่ไม่ได้ ถ้าฝืนจะได้แถวผิด', 'มีครบ 4 เมธอดและ compile ผ่าน', `public ${c} get(String a, String b)  // WHERE Col_A = ? AND Col_B = ?`)
+        : S('dao', `สร้าง ${c}Dao implements Dao<${c}>`, `ใน package dao: get, getAll, getAll(where, order), save, update, delete ตามแม่แบบ MemberDao · save() สร้างรหัสใหม่ด้วย nextId ถ้า id ยังว่าง\nทุกเมธอดเขียนแบบ Lab 8: Connection conn = DatabaseHelper.getConnect() · ประกาศ stmt/rs = null · try { ... } catch (SQLException ex) { LOG.log(Level.WARNING, ...); return null; } finally { DatabaseHelper.closeQuietly(rs, stmt); } (ห้ามปิด conn)`, 'SQL ทั้งหมดของตารางนี้อยู่ไฟล์เดียว หน้าจอและ service ไม่ต้องรู้ชื่อคอลัมน์', 'มีครบ 6 เมธอดและ compile ผ่าน', `obj.set${e.pk.split(' / ')[0].split('_').map((p) => p === 'ID' ? 'Id' : p[0] + p.slice(1).toLowerCase()).join('')}(DatabaseHelper.nextId("${e.table.split(' ')[0]}", "${e.pk.split(' / ')[0]}", "${e.prefix.split(' / ')[0]}", ${e.digits}));`),
       S('extras', 'เพิ่มเมธอดพิเศษที่คนอื่นรอใช้', e.extras.map((x) => `${x[0]} — ${x[1]}`).join('\n'), 'งานของเพื่อนเรียกเมธอดเหล่านี้ ชื่อต้องตรงตามนี้ ไม่งั้นโค้ดเพื่อน compile ไม่ผ่าน', 'เมธอดพิเศษครบทุกตัวตามรายการ'),
       S('test', `เขียน Test${c}Dao แล้วรัน`, `ใน package หลัก: main ที่เรียก getAll(), get(รหัสที่มีจริง), save แถวทดสอบ, delete แถวทดสอบ แล้ว DatabaseHelper.close()`, 'เจอ SQL ผิดตอนนี้แก้ง่ายกว่าตอนต่อหน้าจอแล้ว', e.mock ? `getAll() ได้ ${e.mock} แถวตาม mock data · save ได้รหัสถัดไป · delete แถวทดสอบได้` : 'save แล้ว getAll() เห็นแถวใหม่ · delete แล้วหายไป'),
       S('service', `สร้าง ${c}Service ใส่กฎร้าน`, 'service เรียก DAO และตรวจข้อมูลก่อนบันทึก ผิดกฎให้ throw new IllegalArgumentException("ข้อความภาษาไทย")\nกฎของโมดูลนี้:\n• ' + e.rules.join('\n• '), 'หน้าจอแค่จับ exception แล้วโชว์ข้อความ กฎจึงอยู่ที่เดียว ทุกหน้าที่เรียกใช้ได้กฎเดียวกัน', 'ลองส่งข้อมูลผิดทีละกฎ ได้ข้อความไทยตรงตามกฎทุกข้อ', 'if (ผิดเงื่อนไข) {\n    throw new IllegalArgumentException("บอกว่าผิดอะไร แก้ยังไง");\n}'),
@@ -2547,11 +2603,11 @@ const T = {
     const p = e.panel;
     return [
       S('panel', `สร้าง ${p} เป็น JPanel`, `คลิกขวา package ui → New → JPanel Form ตั้งชื่อ ${p}`, 'ทุกหน้าไปอยู่ใน pnlContent ของ MainFrame (CardLayout) ถ้าทำเป็น JFrame จะเด้งหน้าต่างใหม่และใส่ใน MainFrame ไม่ได้', 'เปิดแท็บ Design ได้'),
-      S('layout', 'วางโครงหน้า: ฟอร์มซ้าย ตารางขวา', 'ซ้าย pnlForm (label + ช่องกรอกทุก field) และปุ่ม btnNew · btnSave · btnDelete\nขวา txtSearch + btnSearch และ scr' + c + ' ห่อ tbl' + c, 'ทุกหน้า CRUD หน้าตาเหมือนกัน ผู้ใช้เรียนครั้งเดียวใช้ได้ทุกหน้า', 'วางครบทุกช่องตาม field ของตาราง'),
+      S('layout', 'วางโครงหน้า: ฟอร์มซ้าย ตารางขวา', 'ลากจาก Palette มาวางแบบ Free Design (GroupLayout ที่มากับ JPanel Form) ห้ามไป Set Layout → Absolute Layout\nซ้าย pnlForm (label + ช่องกรอกทุก field) และปุ่ม btnNew · btnSave · btnDelete\nขวา txtSearch + btnSearch และ scr' + c + ' ห่อ tbl' + c, 'ทุกหน้า CRUD หน้าตาเหมือนกัน ผู้ใช้เรียนครั้งเดียวใช้ได้ทุกหน้า', 'วางครบทุกช่องตาม field ของตาราง'),
       S('names', 'ตั้งชื่อคอมโพเนนต์ตามกติกา', `คลิกขวา → Change Variable Name ทุกตัว: คำนำหน้า (txt, txa, cmb, spn, lbl, btn) + ชื่อ field ตัวแรกพิมพ์ใหญ่ · ดูชื่อที่ถูกในแท็บคู่มือโปรเจกต์ พาร์ท 4 ตาราง ${e.table}`, 'ชื่อแบบ jTextField1 อ่านโค้ดไม่ออก และเพื่อนที่มาช่วยแก้จะหาไม่เจอ', 'ไม่มีชื่อที่ขึ้นต้นด้วย jXxx1 เหลืออยู่'),
-      S('table', 'โหลดข้อมูลลงตาราง', `สร้าง DefaultTableModel ที่แก้ในเซลล์ไม่ได้ (isCellEditable คืน false) แล้ว loadTable(service.getAll())`, 'ถ้าแก้ในตารางได้ ข้อมูลบนจอจะไม่ตรงฐานข้อมูลโดยไม่มีใครรู้', `เปิดหน้าแล้วเห็น ${e.mock || 'ทุก'} แถว`, 'model.setRowCount(0);\nfor (X x : list) model.addRow(new Object[]{ ... });'),
-      S('select', 'คลิกแถวแล้วข้อมูลขึ้นฟอร์ม', 'ListSelectionListener บน tbl → อ่านรหัสจากคอลัมน์ 0 → service.get(id) → เติมทุกช่อง · ช่องรหัส setEditable(false)', 'ดึงจาก service ใหม่ทุกครั้งเพื่อให้ได้ค่าล่าสุด และรหัสสร้างอัตโนมัติ ผู้ใช้ไม่ควรแก้', 'คลิกแต่ละแถวแล้วฟอร์มเปลี่ยนตาม'),
-      S('save', 'ปุ่มบันทึก: เพิ่มหรือแก้', 'ช่องรหัสว่าง = service.add(x) · มีรหัส = service.edit(x) · ครอบด้วย try/catch IllegalArgumentException แล้ว JOptionPane.showMessageDialog ข้อความจาก exception', 'กฎอยู่ใน service แล้ว หน้าจอแค่แสดงข้อความ ไม่ต้องเช็กซ้ำ', 'กรอกผิดได้ข้อความไทย · กรอกถูกแล้วตารางอัปเดต'),
+      S('table', 'โหลดข้อมูลลงตาราง', `ใน loadTable(list) สร้าง DefaultTableModel ใหม่ทุกครั้ง (หัวคอลัมน์ + แถวสดจาก service, isCellEditable คืน false) แล้ว tbl${c}.setModel(model) แบบ Lab 11 · constructor เรียก loadTable(service.getAll()) หลัง initComponents()`, 'ถ้าแก้ในตารางได้ ข้อมูลบนจอจะไม่ตรงฐานข้อมูลโดยไม่มีใครรู้', `เปิดหน้าแล้วเห็น ${e.mock || 'ทุก'} แถว`, 'DefaultTableModel model = Form.readOnlyModel("รหัส", "ชื่อ", ...);\nfor (X x : list) model.addRow(new Object[]{ ... });\ntbl' + c + '.setModel(model);'),
+      S('select', 'คลิกแถวแล้วข้อมูลขึ้นฟอร์ม', 'JTable ไม่มีเมนู Events → ListSelection ใน designer ต้องผูกเองใน constructor: tbl' + c + '.getSelectionModel().addListSelectionListener(this::tbl' + c + 'ValueChanged) → อ่านรหัสจากคอลัมน์ 0 → service.get(id) → เติมทุกช่อง · ช่องรหัส setEditable(false)', 'ดึงจาก service ใหม่ทุกครั้งเพื่อให้ได้ค่าล่าสุด และรหัสสร้างอัตโนมัติ ผู้ใช้ไม่ควรแก้', 'คลิกแต่ละแถวแล้วฟอร์มเปลี่ยนตาม'),
+      S('save', 'ปุ่มบันทึก: เพิ่มหรือแก้', 'ดับเบิลคลิก btnSave ในแท็บ Design (หรือคลิกขวา → Events → Action → actionPerformed) ได้ btnSaveActionPerformed(evt) · ช่องรหัสว่าง = service.add(x) · มีรหัส = service.edit(x) · ครอบด้วย try/catch IllegalArgumentException แล้ว JOptionPane.showMessageDialog ข้อความจาก exception', 'กฎอยู่ใน service แล้ว หน้าจอแค่แสดงข้อความ ไม่ต้องเช็กซ้ำ', 'กรอกผิดได้ข้อความไทย · กรอกถูกแล้วตารางอัปเดต'),
       S('delete', 'ปุ่มลบมีถามยืนยัน', 'JOptionPane.showConfirmDialog ก่อน remove(id) ถ้าได้ false บอกว่าลบไม่ได้เพราะมีข้อมูลอ้างถึง', 'กันกดพลาด และบอกเหตุผลเมื่อ FK ไม่ยอม', 'ลบแถวที่มีการอ้างถึงแล้วเห็นข้อความเตือน'),
       S('theme', 'ใส่สีตาม Figma', 'Theme.stylePrimaryButton(btnSave) และพื้นหลัง Theme.BACKGROUND ห้ามพิมพ์ new Color(...) เอง', 'ทุกหน้าสีเดียวกัน ถ้าจะเปลี่ยนสีแก้ที่ Theme ที่เดียว', 'ปุ่มบันทึกเป็นสีแดงแบรนด์'),
       S('hook', 'ส่งชื่อหน้าให้เปรมใส่ใน MainFrame', `บอกเปรม: ชื่อคลาส ${p} · ปุ่ม btn${c} · ใครเห็น (ผู้จัดการ/ทุกคน)`, 'MainFrame มีเจ้าของคนเดียว ถ้าหลายคนแก้ไฟล์ .form เดียวกัน merge แล้วพัง', 'กดปุ่มใน sidebar แล้วเปิดหน้านี้ได้'),

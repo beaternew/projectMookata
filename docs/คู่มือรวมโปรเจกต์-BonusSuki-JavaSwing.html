@@ -990,7 +990,7 @@ INSERT OR IGNORE INTO User_Account (User_ID, Username, Password, Role, Emp_ID) V
   <section class="block" id="db-helper">
     <h3>DatabaseHelper + DateUtil</h3>
     <p>ต่างจากแลป 3 จุด: ไฟล์ชื่อ <code>bonus_suki.db</code> · ใช้ <code>nextId()</code> แทน <code>getInsertedId()</code> · มีตัวอ่านคอลัมน์ที่ NULL ได้</p>
-    <details class="codebox"><summary><span class="file">helper/DatabaseHelper.java</span><span class="lines">84 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.helper;
+    <details class="codebox"><summary><span class="file">helper/DatabaseHelper.java</span><span class="lines">114 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.helper;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -1018,8 +1018,12 @@ public class DatabaseHelper {
         if (conn == null) {
             try {
                 conn = DriverManager.getConnection(URL);
-                try (Statement pragma = conn.createStatement()) {
+                Statement pragma = null;
+                try {
+                    pragma = conn.createStatement();
                     pragma.execute(&quot;PRAGMA foreign_keys = ON&quot;);   // SQLite ปิด FK ไว้เป็นค่าเริ่มต้น
+                } finally {
+                    closeQuietly(null, pragma);
                 }
             } catch (SQLException ex) {
                 LOG.log(Level.SEVERE, &quot;เชื่อมต่อฐานข้อมูลไม่สำเร็จ: &quot; + URL, ex);
@@ -1049,17 +1053,43 @@ public class DatabaseHelper {
                 + &quot; WHERE &quot; + idColumn + &quot; LIKE ?&quot;
                 + &quot; ORDER BY LENGTH(&quot; + idColumn + &quot;) DESC, &quot; + idColumn + &quot; DESC LIMIT 1&quot;;
         int next = 1;
-        try (PreparedStatement stmt = getConnect().prepareStatement(sql)) {
+        Connection conn = getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, prefix + &quot;%&quot;);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    next = Integer.parseInt(rs.getString(1).substring(prefix.length())) + 1;
-                }
+            rs = stmt.executeQuery();
+            if (rs.next()) {
+                next = Integer.parseInt(rs.getString(1).substring(prefix.length())) + 1;
             }
         } catch (SQLException | NumberFormatException ex) {
             LOG.log(Level.WARNING, &quot;nextId(&quot; + table + &quot;) ล้มเหลว&quot;, ex);
+        } finally {
+            closeQuietly(rs, stmt);
         }
         return prefix + String.format(&quot;%0&quot; + digits + &quot;d&quot;, next);
+    }
+
+    /**
+     * ปิด ResultSet และ Statement ที่เมธอดเปิดเอง (เรียกใน finally ของ DAO แบบ Lab 8)
+     * ไม่ปิด Connection เพราะใช้ร่วมกันทั้งแอป · ปิดพลาดตัวหนึ่งยังพยายามปิดอีกตัว
+     */
+    public static void closeQuietly(ResultSet rs, Statement stmt) {
+        if (rs != null) {
+            try {
+                rs.close();
+            } catch (SQLException closeEx) {
+                System.err.println(&quot;Close rs failed: &quot; + closeEx.getMessage());
+            }
+        }
+        if (stmt != null) {
+            try {
+                stmt.close();
+            } catch (SQLException closeEx) {
+                System.err.println(&quot;Close stmt failed: &quot; + closeEx.getMessage());
+            }
+        }
     }
 
     /** คอลัมน์ INT ที่ NULL ได้ (เช่น Promo_Amount_Member) → Integer หรือ null */
@@ -1381,7 +1411,7 @@ public class Member {
         return memberName + &quot; (&quot; + memberPhoneNo + &quot;)&quot;;
     }
 }</code></pre></details></section>
-  <section class="block" id="c-memberdao"><h3>DAO</h3><details class="codebox"><summary><span class="file">dao/MemberDao.java</span><span class="lines">113 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.dao;
+  <section class="block" id="c-memberdao"><h3>DAO</h3><details class="codebox"><summary><span class="file">dao/MemberDao.java</span><span class="lines">144 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.dao;
 
 import com.example.bonussuki.helper.DatabaseHelper;
 import com.example.bonussuki.model.Member;
@@ -1398,28 +1428,38 @@ public class MemberDao implements Dao&lt;Member&gt; {
     @Override
     public Member get(String id) {
         String sql = &quot;SELECT * FROM Member WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, id);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? Member.fromRS(rs) : null;
-            }
+            rs = stmt.executeQuery();
+            return rs.next() ? Member.fromRS(rs) : null;
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;get(&quot; + id + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
     }
 
     /** เมธอดพิเศษ: ค้นสมาชิกด้วยเบอร์โทร (TOR: ค้นหาข้อมูลด้วยเบอร์โทรศัพท์) */
     public Member getByPhoneNo(String phoneNo) {
         String sql = &quot;SELECT * FROM Member WHERE Member_PhoneNo = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, phoneNo);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? Member.fromRS(rs) : null;
-            }
+            rs = stmt.executeQuery();
+            return rs.next() ? Member.fromRS(rs) : null;
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;getByPhoneNo ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
     }
 
@@ -1432,13 +1472,19 @@ public class MemberDao implements Dao&lt;Member&gt; {
     public List&lt;Member&gt; getAll(String where, String order) {
         List&lt;Member&gt; list = new ArrayList&lt;&gt;();
         String sql = &quot;SELECT * FROM Member WHERE &quot; + where + &quot; ORDER BY &quot; + order;
-        try (Statement stmt = DatabaseHelper.getConnect().createStatement();
-                ResultSet rs = stmt.executeQuery(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        Statement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.createStatement();
+            rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 list.add(Member.fromRS(rs));
             }
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;getAll ล้มเหลว: &quot; + sql, ex);
+        } finally {
+            DatabaseHelper.closeQuietly(rs, stmt);
         }
         return list;
     }
@@ -1450,7 +1496,10 @@ public class MemberDao implements Dao&lt;Member&gt; {
         }
         String sql = &quot;INSERT INTO Member (Member_ID, Member_Name, Member_PhoneNo, Member_Address, Point_Balance) &quot;
                 + &quot;VALUES (?, ?, ?, ?, ?)&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberId());
             stmt.setString(2, obj.getMemberName());
             stmt.setString(3, obj.getMemberPhoneNo());
@@ -1461,6 +1510,8 @@ public class MemberDao implements Dao&lt;Member&gt; {
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;save(&quot; + obj.getMemberPhoneNo() + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 
@@ -1468,7 +1519,10 @@ public class MemberDao implements Dao&lt;Member&gt; {
     public Member update(Member obj) {
         String sql = &quot;UPDATE Member SET Member_Name = ?, Member_PhoneNo = ?, Member_Address = ?, Point_Balance = ? &quot;
                 + &quot;WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberName());
             stmt.setString(2, obj.getMemberPhoneNo());
             stmt.setString(3, obj.getMemberAddress());
@@ -1478,19 +1532,26 @@ public class MemberDao implements Dao&lt;Member&gt; {
         } catch (SQLException ex) {
             LOG.log(Level.WARNING, &quot;update(&quot; + obj.getMemberId() + &quot;) ล้มเหลว&quot;, ex);
             return null;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 
     @Override
     public int delete(Member obj) {
         String sql = &quot;DELETE FROM Member WHERE Member_ID = ?&quot;;
-        try (PreparedStatement stmt = DatabaseHelper.getConnect().prepareStatement(sql)) {
+        Connection conn = DatabaseHelper.getConnect();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement(sql);
             stmt.setString(1, obj.getMemberId());
             return stmt.executeUpdate();
         } catch (SQLException ex) {
             // มีบิลอ้างถึงสมาชิกนี้อยู่ → FK ไม่ให้ลบ
             LOG.log(Level.WARNING, &quot;delete(&quot; + obj.getMemberId() + &quot;) ล้มเหลว&quot;, ex);
             return -1;
+        } finally {
+            DatabaseHelper.closeQuietly(null, stmt);
         }
     }
 }</code></pre></details></section>
@@ -1608,36 +1669,39 @@ public class TestMemberDao {
   <section class="block" id="c-panel">
     <h3>หน้าจอ CRUD (แม่แบบของทุกหน้า)</h3>
     <p>วางคอมโพเนนต์ในแท็บ Design แล้วเขียนเฉพาะส่วนนี้ในแท็บ Source</p>
-    <details class="codebox"><summary><span class="file">ui/MemberPanel.java (ส่วนที่เขียนเอง)</span><span class="lines">94 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>// ui/MemberPanel.java · หน้า CRUD แม่แบบ ใช้ซ้ำได้กับทุกตาราง (เปลี่ยน Member เป็นชื่อตารางของตัวเอง)
+    <details class="codebox"><summary><span class="file">ui/MemberPanel.java (ส่วนที่เขียนเอง)</span><span class="lines">99 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>// ui/MemberPanel.java · หน้า CRUD แม่แบบ ใช้ซ้ำได้กับทุกตาราง (เปลี่ยน Member เป็นชื่อตารางของตัวเอง)
 // หน้า Design: pnlForm (ซ้าย) txtMemberId · txtMemberName · txtMemberPhoneNo · txaMemberAddress · txtPointBalance
 //              btnNew · btnSave · btnDelete       (ขวา) txtSearch · btnSearch · scrMember ห่อ tblMember
 private final MemberService memberService = new MemberService();
-private final DefaultTableModel tableModel = new DefaultTableModel(
-        new Object[]{&quot;รหัส&quot;, &quot;ชื่อ-นามสกุล&quot;, &quot;เบอร์โทร&quot;, &quot;คะแนนสะสม&quot;}, 0) {
-    @Override
-    public boolean isCellEditable(int row, int column) {
-        return false;
-    }
-};
 
 public MemberPanel() {
     initComponents();
-    tblMember.setModel(tableModel);
-    tblMember.getSelectionModel().addListSelectionListener(e -&gt; {
-        if (!e.getValueIsAdjusting()) {
-            fillForm();
-        }
-    });
+    // JTable ไม่มีเมนู Events → ListSelection ใน designer ต้องผูกเองตรงนี้ (แบบ Lab 11)
+    tblMember.getSelectionModel().addListSelectionListener(this::tblMemberValueChanged);
     txtMemberId.setEditable(false);          // รหัสสร้างอัตโนมัติ
     txtPointBalance.setEditable(false);      // คะแนนเพิ่มจากการปิดบิลเท่านั้น
     Theme.stylePrimaryButton(btnSave);
     loadTable(memberService.getAll());
 }
 
+/** สร้าง model ใหม่ทุกครั้งจากข้อมูลสด แล้ว setModel (แบบ Lab 11) */
 private void loadTable(List&lt;Member&gt; list) {
-    tableModel.setRowCount(0);
+    DefaultTableModel model = new DefaultTableModel(
+            new Object[]{&quot;รหัส&quot;, &quot;ชื่อ-นามสกุล&quot;, &quot;เบอร์โทร&quot;, &quot;คะแนนสะสม&quot;}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;                    // แก้ผ่านฟอร์มเท่านั้น
+        }
+    };
     for (Member m : list) {
-        tableModel.addRow(new Object[]{m.getMemberId(), m.getMemberName(), m.getMemberPhoneNo(), m.getPointBalance()});
+        model.addRow(new Object[]{m.getMemberId(), m.getMemberName(), m.getMemberPhoneNo(), m.getPointBalance()});
+    }
+    tblMember.setModel(model);
+}
+
+private void tblMemberValueChanged(javax.swing.event.ListSelectionEvent evt) {
+    if (!evt.getValueIsAdjusting()) {
+        fillForm();
     }
 }
 
@@ -1646,7 +1710,7 @@ private void fillForm() {
     if (row &lt; 0) {
         return;
     }
-    Member m = memberService.get((String) tableModel.getValueAt(row, 0));
+    Member m = memberService.get((String) tblMember.getModel().getValueAt(tblMember.convertRowIndexToModel(row), 0));
     txtMemberId.setText(m.getMemberId());
     txtMemberName.setText(m.getMemberName());
     txtMemberPhoneNo.setText(m.getMemberPhoneNo());
@@ -1663,6 +1727,8 @@ private void clearForm() {
     txtPointBalance.setText(&quot;0&quot;);
 }
 
+// ปุ่มทุกปุ่ม: ดับเบิลคลิกในแท็บ Design (หรือคลิกขวา → Events → Action → actionPerformed)
+// NetBeans สร้างหัวเมธอดให้ เราเขียนแค่ข้างใน
 private void btnNewActionPerformed(java.awt.event.ActionEvent evt) {
     clearForm();
     txtMemberName.requestFocus();
@@ -1970,51 +2036,41 @@ private void btnLogoutActionPerformed(java.awt.event.ActionEvent evt) {
       <div class="tile"><div class="k">OpenTableDialog</div><p><code>cmbDiningTable</code> (โต๊ะว่าง) · <code>spnAmountMember</code> · <code>btnOpen</code> · <code>btnCancel</code></p></div>
       <div class="tile"><div class="k">PaymentDialog</div><p><code>lblTotal</code> · <code>txtMemberPhoneNo</code> + <code>btnFindMember</code> · <code>cmbPromotion</code> · <code>lblDiscount</code> · <code>lblNetAmount</code> · <code>cmbPaymentType</code> · <code>txtReceivedAmount</code> · <code>lblChange</code> · <code>btnConfirm</code></p></div>
     </div>
-    <details class="codebox"><summary><span class="file">ui/component/ProductItemPanel.java</span><span class="lines">57 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.ui.component;
+    <details class="codebox"><summary><span class="file">ui/component/ProductItemPanel.java</span><span class="lines">47 บรรทัด · กดเพื่อเปิด</span></summary><div class="bar"><button class="copy" type="button">ก๊อป</button></div><pre><code>package com.example.bonussuki.ui.component;
 
 import com.example.bonussuki.model.Product;
-import java.awt.BorderLayout;
-import java.awt.GridLayout;
 import java.awt.Image;
 import java.io.File;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
 
-/** การ์ดเมนู 1 ใบในหน้า POS (รูป · ชื่อ · ราคา · ปุ่ม +) สร้างด้วยโค้ด เพราะจำนวนการ์ดมาจากฐานข้อมูล */
-public class ProductItemPanel extends JPanel {
+/**
+ * การ์ดเมนู 1 ใบในหน้า POS · New → JPanel Form ชื่อ ProductItemPanel ใน package ui.component
+ * หน้า Design: lblImage (บน) · lblName + lblPrice (ล่างซ้าย) · btnAdd &quot;+&quot; (ล่างขวา)
+ * จำนวนการ์ดมาจากฐานข้อมูล PosPanel จึง new ProductItemPanel(...) ทีละใบตอนโหลดเมนู
+ */
+public class ProductItemPanel extends javax.swing.JPanel {
 
-    private final JLabel lblImage = new JLabel();
-    private final JLabel lblName = new JLabel();
-    private final JLabel lblPrice = new JLabel();
-    private final JButton btnAdd = new JButton(&quot;+&quot;);
+    private final Product product;
+    private final Consumer&lt;Product&gt; onAdd;
 
     public ProductItemPanel(Product product, Consumer&lt;Product&gt; onAdd) {
-        setLayout(new BorderLayout());
+        this.product = product;
+        this.onAdd = onAdd;
+        initComponents();
         setBackground(Theme.SURFACE);
         setBorder(BorderFactory.createLineBorder(Theme.BORDER));
-
         lblImage.setIcon(loadImage(&quot;images/products/&quot; + product.getProductId() + &quot;.jpg&quot;, 170, 130));
         lblName.setText(product.getProductName());
         lblPrice.setText(String.format(&quot;%,.0f บาท&quot;, product.getAmount()));
-        btnAdd.addActionListener(e -&gt; onAdd.accept(product));
+        Theme.stylePrimaryButton(btnAdd);
+    }
 
-        JPanel pnlText = new JPanel(new GridLayout(2, 1));
-        pnlText.setOpaque(false);
-        pnlText.add(lblName);
-        pnlText.add(lblPrice);
+    // initComponents() ... (NetBeans สร้างจากแท็บ Design)
 
-        JPanel pnlInfo = new JPanel(new BorderLayout());
-        pnlInfo.setOpaque(false);
-        pnlInfo.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        pnlInfo.add(pnlText, BorderLayout.CENTER);
-        pnlInfo.add(btnAdd, BorderLayout.EAST);
-
-        add(lblImage, BorderLayout.CENTER);
-        add(pnlInfo, BorderLayout.SOUTH);
+    private void btnAddActionPerformed(java.awt.event.ActionEvent evt) {
+        onAdd.accept(product);
     }
 
     /** ไม่มีรูปของเมนูนั้น → ใช้ images/no-image.png */
@@ -2036,8 +2092,8 @@ private String currentType = null;        // หมวดที่เลือ�
 
 public PosPanel() {
     initComponents();
-    pnlProductGrid.setLayout(new GridLayout(0, 3, 16, 16));      // 3 คอลัมน์ตาม Figma
-    pnlOrderList.setLayout(new BoxLayout(pnlOrderList, BoxLayout.Y_AXIS));
+    // Layout ตั้งในแท็บ Design: pnlProductGrid = Grid Layout (Rows 0, Columns 3, Gap 16) ตาม Figma
+    //                          pnlOrderList = Box Layout (Axis: Y Axis)
     Theme.stylePrimaryButton(btnCheckout);
     buildCategoryButtons();
     loadProducts();
