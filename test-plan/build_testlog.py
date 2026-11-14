@@ -190,6 +190,12 @@ RISKS = [
  ("H-1", "การ์ด โต๊ะที่เปิดอยู่ นับบิลค้างทุกวัน", "ui/HomePanel.java:226", "นับจาก Dining_Table ที่สถานะ กำลังใช้งาน แทน", "ต๊ะ"),
 ]
 
+# ชุดหลัก (ย่อ): python3 build_testlog.py out.xlsx main
+PREP = None
+if len(sys.argv) > 2 and sys.argv[2] == "main":
+    sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+    from cases_main import PHASES, RISKS, PREP
+
 # ---------------------------------------------------------------- styles
 thin = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -210,12 +216,12 @@ HEAD = ["ลำดับ", "รหัส", "ช่วงทดสอบ", "ห�
 WIDTH = [7, 8, 20, 18, 18, 8, 46, 50, 14, 40, 32, 13, 24, 11, 12, 28]
 INPUT_COLS = {11, 12, 13, 14, 15, 16}
 
-ws["A1"] = "แบบบันทึกผลทดสอบระบบ POS Bonus Suki · ลำดับการทดสอบทั้งระบบ (Task 13 · นุ)"
+ws["A1"] = "แบบบันทึกผลทดสอบระบบ POS Bonus Suki · ลำดับการทดสอบ" + (" (ชุดหลัก)" if PREP else " ทั้งระบบ") + " · Task 13 · นุ"
 ws["A1"].font = f(size=14, bold=True)
 ws["A2"] = ("วิธีใช้: ทดสอบตามคอลัมน์ ลำดับ จากบนลงล่าง (ข้อมูลของข้อก่อนหน้าใช้ต่อในข้อถัดไป) · กรอกเฉพาะคอลัมน์สีเหลือง "
             "(ผลจริง · ผ่าน/ไม่ผ่าน · ชื่อภาพ · ผู้ทดสอบ · วันที่ · หมายเหตุ) · คอลัมน์สีเทา \"อ่านโค้ดคาดว่า\" คือการเดาจากการอ่านโค้ด ไม่ใช่ผลจริง")
 ws["A3"] = ("ตัวอย่างการกรอก: 8-1 | ผลจริง = S001 ยังเป็น 25.5 หลังขาย | ไม่ผ่าน | ชื่อภาพ = 8-1-stock-not-deducted.png | "
-            "หมายเหตุ = deductByBom() ยังว่าง · รหัสที่เป็นตัวเลขล้วน (1-1 … 13-3, R-1 … R-4) มาจากแผนเดิม รหัสที่มีตัวอักษรนำคือข้อที่เพิ่ม")
+            "หมายเหตุ = deductByBom() ยังว่าง · รหัสตัวเลขล้วน (เช่น 1-1, 13-3) มาจากแผนเดิม รหัสที่มีตัวอักษรนำคือข้อที่เพิ่ม")
 for c in ("A2", "A3"):
     ws[c].font = f(italic=True, color="595959")
 
@@ -350,7 +356,7 @@ prep = [
  "ข้อ 2-3 ต้องเปิดโปรแกรม 2 หน้าต่าง (Run 2 ครั้ง) ที่ชี้ไฟล์ bonus_suki.db เดียวกัน",
  "ข้อ 11-x ทำในวันที่ staff ยังไม่ได้ลงเวลา · ข้อ W-3 ต้องมีแถวที่เข้างานก่อนและหลัง 09:00 (ดูจาก mock data ได้)",
 ]
-for i, t in enumerate(prep, 3):
+for i, t in enumerate(PREP or prep, 3):
     P.cell(row=i, column=1, value=i - 2).font = f()
     P.cell(row=i, column=1).alignment = CENTER
     c = P.cell(row=i, column=2, value=t)
